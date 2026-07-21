@@ -6,6 +6,7 @@ const groqApiKey = process.env.GROQ_API_KEY;
 if (!groqApiKey) {
   throw new Error('GROQ_API_KEY environment variable is required');
 }
+// @ts-ignore - groq-sdk ESM/CJS compat (TS 5.9 strict)
 const groq = new Groq({ apiKey: groqApiKey });
 
 export const generateQuestionsFromText = async (
