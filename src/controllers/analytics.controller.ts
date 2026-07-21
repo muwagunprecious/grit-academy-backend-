@@ -44,7 +44,7 @@ export const getStudentAnalytics = async (req: Request, res: Response, next: Nex
     const topicScores: Record<string, { correct: number; total: number }> = {};
     const subjectScoresMap: Record<string, { name: string; score: number; total: number }> = {};
 
-    attempts.forEach(attempt => {
+    attempts.forEach((attempt: any) => {
       const answers = attempt.answers as any[];
       if (!Array.isArray(answers)) return;
 
@@ -88,7 +88,7 @@ export const getStudentAnalytics = async (req: Request, res: Response, next: Nex
     }));
 
     // Progress graph - last 10 scores
-    const progress = attempts.map(a => ({
+    const progress = attempts.map((a: any) => ({
       attemptId: a.id,
       score: a.percentage,
       date: a.completedAt || a.createdAt,
@@ -144,7 +144,7 @@ export const getAdminAnalytics = async (req: Request, res: Response, next: NextF
     });
 
     const monthlyRevenue: Record<string, number> = {};
-    purchases.forEach(p => {
+    purchases.forEach((p: any) => {
       const month = p.createdAt.toLocaleString('default', { month: 'short', year: '2-digit' });
       monthlyRevenue[month] = (monthlyRevenue[month] || 0) + p.amount;
     });
@@ -260,7 +260,7 @@ export const getTestPurchaseAnalytics = async (req: Request, res: Response, next
 
     // Detailed purchaser statistics
     const purchaserList = await Promise.all(
-      purchases.map(async p => {
+      purchases.map(async (p: any) => {
         // User's attempts details
         const userAttempts = await prisma.testAttempt.findMany({
           where: { userId: p.userId, testId, status: 'COMPLETED' },
@@ -268,9 +268,9 @@ export const getTestPurchaseAnalytics = async (req: Request, res: Response, next
         });
 
         const attemptsCount = userAttempts.length;
-        const highestUserScore = userAttempts.reduce((max, att) => Math.max(max, att.percentage), 0);
+        const highestUserScore = userAttempts.reduce((max: number, att: any) => Math.max(max, att.percentage), 0);
         const averageUserScore = attemptsCount > 0 
-          ? userAttempts.reduce((sum, att) => sum + att.percentage, 0) / attemptsCount 
+          ? userAttempts.reduce((sum: number, att: any) => sum + att.percentage, 0) / attemptsCount 
           : 0;
 
         return {
@@ -285,7 +285,7 @@ export const getTestPurchaseAnalytics = async (req: Request, res: Response, next
           highestScore: highestUserScore,
           averageScore: averageUserScore,
           latestScore: userAttempts[0]?.percentage || null,
-          hasPassed: userAttempts.some(a => a.isPassed),
+          hasPassed: userAttempts.some((a: any) => a.isPassed),
         };
       })
     );

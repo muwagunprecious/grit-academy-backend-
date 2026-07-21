@@ -72,7 +72,7 @@ export const startAttempt = async (req: Request, res: Response, next: NextFuncti
     });
 
     // Format questions (strip correct answers for security)
-    const formattedQuestions = test.questions.map(q => {
+    const formattedQuestions = test.questions.map((q: any) => {
       // Options are stored as Json: [ {id, text, isCorrect} ]
       // Strip isCorrect field so students cannot inspect payload to find answers
       const rawOptions = q.question.options as any[];
@@ -181,7 +181,7 @@ export const startCustomAttempt = async (req: Request, res: Response, next: Next
     }
 
     // Create dynamic test container
-    const testTitle = `${subjects.map(s => s.name).join(', ')} Practice Exam`;
+    const testTitle = `${subjects.map((s: any) => s.name).join(', ')} Practice Exam`;
     const test = await prisma.test.create({
       data: {
         title: testTitle,
@@ -240,7 +240,7 @@ export const startCustomAttempt = async (req: Request, res: Response, next: Next
       data: {
         attemptId: attempt.id,
         duration: actualDuration,
-        subjects: subjects.map(s => ({ id: s.id, name: s.name })),
+        subjects: subjects.map((s: any) => ({ id: s.id, name: s.name })),
         questions: formattedQuestions,
       },
     });

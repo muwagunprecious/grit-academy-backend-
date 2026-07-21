@@ -283,7 +283,7 @@ export const generatePersonalizedStudyPlan = async (userId: string) => {
     }
 
     // Extract stats
-    const averageScore = attempts.reduce((acc, curr) => acc + curr.percentage, 0) / attempts.length;
+    const averageScore = attempts.reduce((acc: number, curr: any) => acc + curr.percentage, 0) / attempts.length;
     
     // Query weak vs strong subjects based on attempts details
     // For simplicity, aggregate average subject scores from attempt JSONs

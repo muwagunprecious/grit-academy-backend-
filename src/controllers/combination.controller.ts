@@ -92,7 +92,7 @@ export const updateCombination = async (req: Request, res: Response, next: NextF
         // Add new subjects
         ...subjects.map((subName: string) =>
           prisma.subject.upsert({
-            where: { name_combinationId: { name: subName, combinationId: id } },
+            where: { name: subName },
             create: { name: subName, combinationId: id },
             update: {},
           })

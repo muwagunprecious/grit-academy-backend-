@@ -48,10 +48,10 @@ export const getTests = async (req: Request, res: Response, next: NextFunction) 
         },
         select: { testId: true },
       });
-      purchasedTestIds = purchases.map(p => p.testId);
+      purchasedTestIds = purchases.map((p: any) => p.testId);
     }
 
-    const formattedTests = tests.map(test => ({
+    const formattedTests = tests.map((test: any) => ({
       ...test,
       isPurchased: purchasedTestIds.includes(test.id),
     }));

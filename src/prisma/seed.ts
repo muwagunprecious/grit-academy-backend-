@@ -69,10 +69,7 @@ async function main() {
     for (const subName of comb.subjects) {
       await prisma.subject.upsert({
         where: {
-          name_combinationId: {
-            name: subName,
-            combinationId: dbComb.id,
-          },
+          name: subName,
         },
         update: {},
         create: {
