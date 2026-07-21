@@ -1,0 +1,327 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  STUDENT
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+  EXPERT
+}
+
+enum QuestionType {
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  FILL_BLANK
+}
+
+enum QuestionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  ARCHIVED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  COMPLETED
+  TIMED_OUT
+  ABANDONED
+}
+
+enum PdfStatus {
+  UPLOADED
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+model GritUser {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  password      String
+  firstName     String
+  lastName      String
+  phone         String?
+  photo         String?
+  school        String?
+  class         String?
+  state         String?
+  role          Role     @default(STUDENT)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  purchases     Purchase[]
+  attempts      TestAttempt[]
+  bookmarks     Bookmark[]
+  achievements  UserAchievement[]
+  refreshTokens RefreshToken[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
+
+  @@map("grit_users")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      GritUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("grit_refresh_tokens")
+}
+
+model SubjectCombination {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String?
+  icon        String?
+  isActive    Boolean   @default(true)
+  subjects    Subject[]
+  tests       Test[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("grit_combinations")
+}
+
+model Subject {
+  id            String              @id @default(cuid())
+  name          String              @unique
+  combinationId String?
+  combination   SubjectCombination? @relation(fields: [combinationId], references: [id], onDelete: Cascade)
+  questions     Question[]
+  pdfs          PdfDocument[]
+  createdAt     DateTime            @default(now())
+
+  @@map("grit_subjects")
+}
+
+model Test {
+  id              String             @id @default(cuid())
+  title           String
+  description     String?
+  combinationId   String
+  combination     SubjectCombination @relation(fields: [combinationId], references: [id])
+  price           Float
+  duration        Int
+  passingScore    Float              @default(50)
+  difficulty      Difficulty         @default(MEDIUM)
+  coverImage      String?
+  isPublished     Boolean            @default(false)
+  publishDate     DateTime?
+  instructions    String?
+  negativeMarking Boolean            @default(false)
+  negativeScore   Float              @default(0)
+  maxAttempts     Int?
+  totalQuestions  Int                @default(0)
+  averageRating   Float              @default(0)
+  totalPurchases  Int                @default(0)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  questions  TestQuestion[]
+  purchases  Purchase[]
+  attempts   TestAttempt[]
+
+  @@map("grit_tests")
+}
+
+model Question {
+  id            String         @id @default(cuid())
+  text          String
+  type          QuestionType   @default(SINGLE_CHOICE)
+  options       Json
+  explanation   String?
+  subjectId     String
+  subject       Subject        @relation(fields: [subjectId], references: [id])
+  topic         String?
+  difficulty    Difficulty     @default(MEDIUM)
+  marks         Float          @default(1)
+  estimatedTime Int?
+  bloomTaxonomy String?
+  tags          String[]
+  imageUrl      String?
+  sourcePdfId   String?
+  sourcePdf     PdfDocument?   @relation(fields: [sourcePdfId], references: [id])
+  sourcePage    Int?
+  aiConfidence  Float?
+  isApproved    Boolean        @default(false)
+  status        QuestionStatus @default(PENDING)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  testQuestions TestQuestion[]
+  bookmarks     Bookmark[]
+
+  @@map("grit_questions")
+}
+
+model TestQuestion {
+  id         String   @id @default(cuid())
+  testId     String
+  test       Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id])
+  order      Int
+
+  @@unique([testId, questionId])
+  @@map("grit_test_questions")
+}
+
+model Purchase {
+  id              String        @id @default(cuid())
+  userId          String
+  user            GritUser      @relation(fields: [userId], references: [id])
+  testId          String
+  test            Test          @relation(fields: [testId], references: [id])
+  amount          Float
+  currency        String        @default("NGN")
+  paymentRef      String        @unique
+  paymentProvider String
+  paymentStatus   PaymentStatus @default(PENDING)
+  invoiceUrl      String?
+  ipAddress       String?
+  createdAt       DateTime      @default(now())
+
+  @@unique([userId, testId])
+  @@map("grit_purchases")
+}
+
+model TestAttempt {
+  id            String        @id @default(cuid())
+  userId        String
+  user          GritUser      @relation(fields: [userId], references: [id])
+  testId        String
+  test          Test          @relation(fields: [testId], references: [id])
+  answers       Json
+  score         Float         @default(0)
+  percentage    Float         @default(0)
+  correctCount  Int           @default(0)
+  wrongCount    Int           @default(0)
+  skippedCount  Int           @default(0)
+  timeUsed      Int           @default(0)
+  totalTime     Int
+  isPassed      Boolean       @default(false)
+  subjectScores Json?
+  startedAt     DateTime      @default(now())
+  completedAt   DateTime?
+  status        AttemptStatus @default(IN_PROGRESS)
+  createdAt     DateTime      @default(now())
+
+  @@map("grit_attempts")
+}
+
+model PdfDocument {
+  id             String    @id @default(cuid())
+  fileName       String
+  fileUrl        String
+  fileSize       Int
+  subjectId      String
+  subject        Subject   @relation(fields: [subjectId], references: [id])
+  extractedText  String?
+  totalPages     Int?
+  status         PdfStatus @default(UPLOADED)
+  questionsCount Int       @default(0)
+  uploadedBy     String
+  createdAt      DateTime  @default(now())
+
+  questions Question[]
+
+  @@map("grit_pdfs")
+}
+
+model Bookmark {
+  id         String   @id @default(cuid())
+  userId     String
+  user       GritUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, questionId])
+  @@map("grit_bookmarks")
+}
+
+model Achievement {
+  id          String            @id @default(cuid())
+  name        String            @unique
+  description String
+  icon        String
+  criteria    Json
+  createdAt   DateTime          @default(now())
+  users       UserAchievement[]
+
+  @@map("grit_achievements")
+}
+
+model UserAchievement {
+  id            String      @id @default(cuid())
+  userId        String
+  user          GritUser    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievementId String
+  achievement   Achievement @relation(fields: [achievementId], references: [id])
+  earnedAt      DateTime    @default(now())
+
+  @@unique([userId, achievementId])
+  @@map("grit_user_achievements")
+}
+
+model Setting {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
+
+  @@map("grit_settings")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      GritUser @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  details   Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@map("grit_audit_logs")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      GritUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  @@map("grit_notifications")
+}
