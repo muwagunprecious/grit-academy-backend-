@@ -101,6 +101,11 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Grit Academy API Server is running on port ${PORT}`);
-});
+// For local development
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`🚀 Grit Academy API Server is running on port ${PORT}`);
+  });
+}
+
+export default app;
