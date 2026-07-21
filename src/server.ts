@@ -27,6 +27,7 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Security Middlewares
+// @ts-ignore - helmet v8 ESM/CJS compat (TS 5.9 strict)
 app.use(helmet({
   crossOriginResourcePolicy: false,
 }));
@@ -55,6 +56,7 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(cookieParser());
 
 // Rate Limiting
+// @ts-ignore - express-rate-limit v7 ESM/CJS compat (TS 5.9 strict)
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 200, // Limit each IP to 200 requests per window
