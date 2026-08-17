@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import prisma from '../lib/prisma.js';
 import { BadRequestError, NotFoundError } from '../utils/errors.js';
 
@@ -158,4 +159,22 @@ export const verifyPaystackPayment = async (reference: string) => {
     });
     throw new BadRequestError('Payment was not successful');
   }
+};
+
+export const handlePaystackWebhook = async (payload: any, signature?: string) => {
+  if (signature) {
+    const hash = crypto.createHmac('sha512', PAYSTACK_SECRET).update(JSON.stringify(payload)).digest('hex');
+    if (hash !== signature) {
+      throw new BadRequestError('Invalid Paystack signature');
+    }
+  }
+
+  const { event, data } = payload;
+  if (event === 'charge.success') {
+    const reference = data?.reference;
+    if (reference) {
+      await verifyPaystackPayment(reference);
+    }
+  }
+  return { status: 'success' };
 };

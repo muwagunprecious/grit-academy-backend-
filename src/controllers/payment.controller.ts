@@ -100,3 +100,15 @@ export const getAllPayments = async (req: Request, res: Response, next: NextFunc
     next(error);
   }
 };
+
+// Paystack Webhook Handler
+export const handleWebhook = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const signature = req.headers['x-paystack-signature'] as string;
+    await paymentService.handlePaystackWebhook(req.body, signature);
+    res.status(200).json({ status: 'success' });
+  } catch (error) {
+    // Paystack webhooks require 200 response to acknowledge receipt
+    res.status(200).json({ status: 'failed', error: String(error) });
+  }
+};

@@ -19,6 +19,9 @@ const verifySchema = z.object({
   }),
 });
 
+// Public Webhook Route for Paystack
+router.post('/webhook', paymentController.handleWebhook);
+
 router.use(authenticate);
 
 router.post('/initialize', validate(initializeSchema), paymentController.initializePayment);
