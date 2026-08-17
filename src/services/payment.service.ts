@@ -22,7 +22,12 @@ export const initializePaystackPayment = async (userId: string, testId: string, 
   });
 
   if (existingPurchase && existingPurchase.paymentStatus === 'SUCCESS') {
-    throw new BadRequestError('You have already purchased this test package');
+    return {
+      authorization_url: `${FRONTEND_URL}/dashboard/tests/${testId}?status=success`,
+      reference: existingPurchase.paymentRef,
+      isFree: false,
+      alreadyPurchased: true,
+    };
   }
 
   const amountInKobo = Math.round(test.price * 100);
