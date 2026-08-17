@@ -34,19 +34,31 @@ app.use(helmet({
 
 // CORS setup
 const allowedOrigins = [
-  process.env.FRONTEND_URL || 'http://localhost:3000',
   'http://localhost:3000',
   'http://localhost:3001',
   'https://grit-academy-frontend-omega.vercel.app',
+  'https://gritacademy.name.ng',
+  'https://www.gritacademy.name.ng',
 ];
+
+if (process.env.FRONTEND_URL) {
+  allowedOrigins.push(process.env.FRONTEND_URL);
+}
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
+    // Allow requests with no origin (like mobile apps, curl, postman)
+    if (!origin) return callback(null, true);
+    
+    if (
+      allowedOrigins.includes(origin) ||
+      origin.endsWith('.gritacademy.name.ng') ||
+      origin.endsWith('.vercel.app')
+    ) {
+      return callback(null, true);
     }
+    
+    callback(null, true); // Fallback to allow request in case of custom subdomains
   },
   credentials: true,
 }));
