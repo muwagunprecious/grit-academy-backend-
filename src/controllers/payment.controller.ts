@@ -90,12 +90,6 @@ export const applyCoupon = async (req: Request, res: Response, next: NextFunctio
       });
     }
 
-    // Update user access fee status
-    await prisma.gritUser.update({
-      where: { id: userId },
-      data: { hasPaidAccessFee: true },
-    });
-
     res.status(200).json({
       status: 'success',
       message: 'Coupon "solar" applied successfully! ₦500 platform fee waived.',
