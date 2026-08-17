@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import prisma from '../lib/prisma.js';
 import { BadRequestError, NotFoundError } from '../utils/errors.js';
 
-const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY || 'sk_test_placeholder';
+const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY || 'sk_test_fed535e8c2a8cac2ddfa2959181df64c87517f44';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
 export const initializePaystackPayment = async (userId: string, testId: string, email: string) => {
@@ -14,7 +14,7 @@ export const initializePaystackPayment = async (userId: string, testId: string, 
     throw new NotFoundError('Test package not found');
   }
 
-  // Check if already purchased
+  // Check if already successfully purchased
   const existingPurchase = await prisma.purchase.findUnique({
     where: {
       userId_testId: { userId, testId },
@@ -30,35 +30,11 @@ export const initializePaystackPayment = async (userId: string, testId: string, 
     };
   }
 
-  const amountInKobo = Math.round(test.price * 100);
+  // Mandatory ₦500.00 platform access fee = 50,000 kobo
+  const amountInKobo = 50000;
   const paymentRef = `grit-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
-  // If amount is 0, we can grant access for free immediately!
-  if (amountInKobo === 0) {
-    const purchase = await prisma.purchase.upsert({
-      where: { userId_testId: { userId, testId } },
-      create: {
-        userId,
-        testId,
-        amount: 0,
-        paymentRef,
-        paymentProvider: 'free',
-        paymentStatus: 'SUCCESS',
-      },
-      update: {
-        paymentStatus: 'SUCCESS',
-        paymentRef,
-      },
-    });
-
-    return {
-      authorization_url: `${FRONTEND_URL}/dashboard/tests/${testId}?status=success`,
-      reference: paymentRef,
-      isFree: true,
-    };
-  }
-
-  // Call Paystack API
+  // Call Paystack API to initialize ₦500 payment
   const response = await fetch('https://api.paystack.co/transaction/initialize', {
     method: 'POST',
     headers: {
