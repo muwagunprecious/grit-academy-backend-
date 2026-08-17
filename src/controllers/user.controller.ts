@@ -25,9 +25,19 @@ export const getMe = async (req: Request, res: Response, next: NextFunction) => 
       throw new NotFoundError('User not found');
     }
 
+    const purchasesCount = await prisma.purchase.count({
+      where: { userId: user.id, paymentStatus: 'SUCCESS' },
+    });
+    const hasPaidAccessFee = user.role !== 'STUDENT' || purchasesCount > 0;
+
     res.status(200).json({
       status: 'success',
-      data: { user },
+      data: {
+        user: {
+          ...user,
+          hasPaidAccessFee,
+        },
+      },
     });
   } catch (error) {
     next(error);

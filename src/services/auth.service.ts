@@ -81,6 +81,11 @@ export const registerUser = async (data: any) => {
     },
   });
 
+  const successfulPurchasesCount = await prisma.purchase.count({
+    where: { userId: user.id, paymentStatus: 'SUCCESS' },
+  });
+  const hasPaidAccessFee = user.role !== 'STUDENT' || successfulPurchasesCount > 0;
+
   return {
     user: {
       id: user.id,
@@ -88,6 +93,7 @@ export const registerUser = async (data: any) => {
       firstName: user.firstName,
       lastName: user.lastName,
       role: user.role,
+      hasPaidAccessFee,
     },
     ...tokens,
   };
@@ -130,6 +136,11 @@ export const loginUser = async (data: any) => {
     },
   });
 
+  const successfulPurchasesCount = await prisma.purchase.count({
+    where: { userId: user.id, paymentStatus: 'SUCCESS' },
+  });
+  const hasPaidAccessFee = user.role !== 'STUDENT' || successfulPurchasesCount > 0;
+
   return {
     user: {
       id: user.id,
@@ -138,6 +149,7 @@ export const loginUser = async (data: any) => {
       lastName: user.lastName,
       role: user.role,
       photo: user.photo,
+      hasPaidAccessFee,
     },
     ...tokens,
   };
@@ -186,6 +198,11 @@ export const refreshAccessToken = async (token: string) => {
     },
   });
 
+  const refreshPurchasesCount = await prisma.purchase.count({
+    where: { userId: user.id, paymentStatus: 'SUCCESS' },
+  });
+  const refreshHasPaid = user.role !== 'STUDENT' || refreshPurchasesCount > 0;
+
   return {
     user: {
       id: user.id,
@@ -193,6 +210,7 @@ export const refreshAccessToken = async (token: string) => {
       firstName: user.firstName,
       lastName: user.lastName,
       role: user.role,
+      hasPaidAccessFee: refreshHasPaid,
     },
     ...tokens,
   };
