@@ -76,14 +76,16 @@ export const applyCoupon = async (req: Request, res: Response, next: NextFunctio
         update: {
           paymentStatus: 'SUCCESS',
           amount: 0,
-          paymentReference: `COUPON_SOLAR_${Date.now()}`,
+          paymentRef: `COUPON_SOLAR_${Date.now()}_${userId.slice(-4)}`,
+          paymentProvider: 'PROMO_COUPON',
         },
         create: {
           userId,
           testId: targetTestId,
           amount: 0,
           paymentStatus: 'SUCCESS',
-          paymentReference: `COUPON_SOLAR_${Date.now()}`,
+          paymentRef: `COUPON_SOLAR_${Date.now()}_${userId.slice(-4)}`,
+          paymentProvider: 'PROMO_COUPON',
         },
       });
     }
