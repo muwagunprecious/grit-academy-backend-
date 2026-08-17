@@ -144,8 +144,7 @@ JSON Structure:
 
 Return ONLY valid JSON. Do not include introductory or concluding text.`;
 
-      // Use llama-3.3-70b-versatile, fallback to llama-3.1-8b-instant if rate limit hit
-      const modelToUse = attempt > 1 ? 'llama-3.1-8b-instant' : 'llama-3.3-70b-versatile';
+      const modelToUse = attempt > 1 ? 'openai/gpt-oss-20b' : 'openai/gpt-oss-120b';
 
       let chatCompletion;
       try {
@@ -157,11 +156,11 @@ Return ONLY valid JSON. Do not include introductory or concluding text.`;
           response_format: { type: 'json_object' },
         });
       } catch (groqErr: any) {
-        if (groqErr.status === 413 || groqErr.message?.includes('TPM') || groqErr.message?.includes('rate_limit')) {
-          console.warn(`Groq rate limit hit on ${modelToUse}. Falling back to llama-3.1-8b-instant (30k TPM)...`);
+        if (groqErr.status === 413 || groqErr.message?.includes('TPM') || groqErr.message?.includes('rate_limit') || groqErr.message?.includes('model_not_found')) {
+          console.warn(`Groq rate limit or error on ${modelToUse}. Falling back to openai/gpt-oss-20b...`);
           chatCompletion = await groq.chat.completions.create({
             messages: [{ role: 'user', content: prompt }],
-            model: 'llama-3.1-8b-instant',
+            model: 'openai/gpt-oss-20b',
             temperature: 0.3,
             max_tokens: 4000,
             response_format: { type: 'json_object' },
@@ -326,15 +325,15 @@ Return ONLY a valid JSON object matching this exact structure:
     try {
       completion = await groq.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
-        model: 'llama-3.3-70b-versatile',
+        model: 'openai/gpt-oss-120b',
         temperature: 0.2,
         response_format: { type: 'json_object' },
       });
     } catch (groqErr: any) {
-      console.warn('Groq 70b limit hit in explanation, using llama-3.1-8b-instant...');
+      console.warn('Groq 120b limit or error in explanation, using openai/gpt-oss-20b...');
       completion = await groq.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
-        model: 'llama-3.1-8b-instant',
+        model: 'openai/gpt-oss-20b',
         temperature: 0.2,
         response_format: { type: 'json_object' },
       });
@@ -434,7 +433,7 @@ Generate a professional, structured weekly AI study recommendation (Markdown for
 
     const completion = await groq.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b',
       temperature: 0.3,
       response_format: { type: 'json_object' },
     });
