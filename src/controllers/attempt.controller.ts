@@ -171,7 +171,7 @@ export const startAttempt = async (req: Request, res: Response, next: NextFuncti
 
 export const startCustomAttempt = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { subjectIds, duration = 30, questionsPerSubject = 10 } = req.body;
+    const { subjectIds, duration = 30, questionsPerSubject = 30 } = req.body;
     const userId = req.user!.id;
 
     // Enforce 500 NGN access fee requirement for all student accounts
