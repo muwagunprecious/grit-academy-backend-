@@ -262,3 +262,60 @@ export const getBookmarks = async (req: Request, res: Response, next: NextFuncti
     next(error);
   }
 };
+
+export const getFlaggedQuestions = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const flaggedLogs = await prisma.auditLog.findMany({
+      where: { action: 'QUESTION_FLAGGED', entity: 'Question' },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+
+    const qIds = Array.from(new Set(flaggedLogs.map((l) => l.entityId).filter(Boolean))) as string[];
+
+    const questions = await prisma.question.findMany({
+      where: { id: { in: qIds } },
+      include: { subject: { select: { name: true } } },
+    });
+
+    const flaggedQuestions = flaggedLogs.map((log) => {
+      const q = questions.find((item) => item.id === log.entityId);
+      const details = (log.details as any) || {};
+      return {
+        logId: log.id,
+        questionId: log.entityId,
+        text: q?.text || 'Question details unavailable',
+        passage: q?.passage,
+        subjectName: q?.subject?.name || 'Subject',
+        topic: q?.topic || 'General',
+        options: q?.options || [],
+        explanation: q?.explanation,
+        flaggedBy: details.userEmail || 'Student',
+        studentName: details.userName || 'Student Account',
+        createdAt: log.createdAt,
+      };
+    });
+
+    res.status(200).json({
+      status: 'success',
+      data: { flaggedQuestions },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const dismissFlaggedQuestion = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params as { id: string };
+    await prisma.auditLog.deleteMany({
+      where: { id },
+    });
+    res.status(200).json({
+      status: 'success',
+      message: 'Flag dismissed successfully',
+    });
+  } catch (error) {
+    next(error);
+  }
+};

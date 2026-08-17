@@ -351,7 +351,7 @@ export const saveAttempt = async (req: Request, res: Response, next: NextFunctio
 export const submitAttempt = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params as { id: string };
-    const { answers, timeUsed } = req.body;
+    const { answers, timeUsed, flaggedQuestionIds } = req.body;
 
     const attempt = await prisma.testAttempt.findUnique({
       where: { id },
@@ -485,7 +485,26 @@ export const submitAttempt = async (req: Request, res: Response, next: NextFunct
       },
     });
 
-    // Check for achievements
+    // Log flagged questions to audit log for admin review
+    if (Array.isArray(flaggedQuestionIds) && flaggedQuestionIds.length > 0) {
+      for (const qId of flaggedQuestionIds) {
+        try {
+          await prisma.auditLog.create({
+            data: {
+              userId: attempt.userId,
+              action: 'QUESTION_FLAGGED',
+              entity: 'Question',
+              entityId: qId,
+              details: {
+                userEmail: req.user?.email,
+                userName: `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim(),
+                attemptId: id,
+              },
+            },
+          });
+        } catch {}
+      }
+    }
     // Simple mock unlock: unlock first exam completed achievement
     const completedCount = await prisma.testAttempt.count({
       where: { userId: attempt.userId, status: 'COMPLETED' },

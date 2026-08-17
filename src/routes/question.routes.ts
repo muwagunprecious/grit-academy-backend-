@@ -36,7 +36,9 @@ router.use(authenticate);
 router.get('/bookmarks', questionController.getBookmarks);
 router.post('/:id/bookmark', questionController.toggleBookmark);
 
-// Admin-only question bank routes
+router.get('/flagged', requireRole('ADMIN', 'SUPER_ADMIN'), questionController.getFlaggedQuestions);
+router.delete('/flagged/:id', requireRole('ADMIN', 'SUPER_ADMIN'), questionController.dismissFlaggedQuestion);
+
 router.get('/', requireRole('ADMIN', 'SUPER_ADMIN'), questionController.getQuestions);
 router.post('/', requireRole('ADMIN', 'SUPER_ADMIN'), validate(questionSchema), questionController.createQuestion);
 router.put('/:id', requireRole('ADMIN', 'SUPER_ADMIN'), validate(questionSchema.partial()), questionController.updateQuestion);

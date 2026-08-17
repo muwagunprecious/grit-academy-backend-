@@ -290,27 +290,36 @@ Return ONLY valid JSON. Do not include introductory or concluding text.`;
 
 export const getAiExplanation = async (question: any, studentAnswerId: string) => {
   try {
-    const correctOption = (question.options as any[]).find(o => o.isCorrect);
-    const studentOption = (question.options as any[]).find(o => o.id === studentAnswerId);
+    const rawOptions = (question.options as any[]) || [];
+    const correctOption = rawOptions.find(o => o.isCorrect === true || o.isCorrect === 'true') || rawOptions[0];
+    const studentOption = rawOptions.find(o => o.id === studentAnswerId || o.text === studentAnswerId);
 
-    const prompt = `You are an expert Nigerian secondary school tutor. A student got a question ${
-      studentOption?.isCorrect ? 'CORRECT' : 'WRONG'
-    }. Explain the concepts clearly.
+    const isCorrect = studentOption ? studentOption.isCorrect === true : false;
 
-Question: ${question.text}
-Options:
-${(question.options as any[]).map(o => `- Option [${o.id}]: ${o.text}`).join('\n')}
-Correct Answer: Option [${correctOption?.id}]: ${correctOption?.text}
-Student's Answer: Option [${studentAnswerId}]: ${studentOption?.text || 'Skipped'}
+    const prompt = `You are a master secondary school teacher for Nigerian WAEC, JAMB (UTME), and NECO past exams.
+Provide an exhaustive, step-by-step, pedagogical correction for the following question.
 
-Provide a structured response in valid JSON with these keys:
+QUESTION: "${question.text}"
+
+OPTIONS:
+${rawOptions.map((o, idx) => `- Option [${o.id || String.fromCharCode(65 + idx)}]: "${o.text}" ${o.isCorrect ? '(CORRECT ANSWER)' : ''}`).join('\n')}
+
+STUDENT'S SELECTION: "${studentOption?.text || studentAnswerId || 'Skipped'}" (${isCorrect ? 'CORRECT' : 'WRONG'})
+
+REQUIREMENTS:
+1. "simpleExplanation": 1-2 clear sentences summarizing the core rule, definition, or formula.
+2. "detailedExplanation": A thorough, step-by-step breakdown explaining WHY Option [${correctOption?.id || 'A'}] ("${correctOption?.text || ''}") is mathematically/grammatically/conceptually correct, AND why each incorrect distractor option is wrong.
+3. "examTip": A practical JAMB/WAEC exam strategy or trap to avoid for this specific topic.
+4. "memoryTrick": A memorable mnemonic, formula rule, or rhyme to help remember this concept.
+
+Return ONLY a valid JSON object matching this exact structure:
 {
-  "simpleExplanation": "A 1-2 sentence extremely simple explanation of the concept...",
-  "detailedExplanation": "A complete, student-friendly explanation of why the correct answer is right and why the other options are distractors...",
-  "examTip": "A strategic tip or common trap for this type of question in WAEC/JAMB...",
-  "memoryTrick": "A mnemonic, rhyme, analogy or acronym to help the student remember this concept easily...",
-  "relatedTopic": "Name of the related topic...",
-  "suggestedReading": "General study recommendation..."
+  "simpleExplanation": "...",
+  "detailedExplanation": "...",
+  "examTip": "...",
+  "memoryTrick": "...",
+  "relatedTopic": "${question.topic || 'General'}",
+  "suggestedReading": "Recommended textbook chapter"
 }`;
 
     let completion;
@@ -322,7 +331,7 @@ Provide a structured response in valid JSON with these keys:
         response_format: { type: 'json_object' },
       });
     } catch (groqErr: any) {
-      console.warn('Groq 70b rate limit or error in explanation, falling back to llama-3.1-8b-instant...');
+      console.warn('Groq 70b limit hit in explanation, using llama-3.1-8b-instant...');
       completion = await groq.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
         model: 'llama-3.1-8b-instant',
@@ -339,17 +348,22 @@ Provide a structured response in valid JSON with these keys:
     return JSON.parse(responseText);
   } catch (error) {
     console.error('AI Correction Error:', error);
-    const cleanExpl = question.explanation && !question.explanation.toLowerCase().includes('past examination question')
-      ? question.explanation
-      : `The correct option is Option [${(question.options as any[]).find(o => o.isCorrect)?.id || 'A'}]. Review the topic in your syllabus for a deeper understanding.`;
+    const rawOptions = (question.options as any[]) || [];
+    const correctOption = rawOptions.find(o => o.isCorrect === true) || rawOptions[0];
+    const studentOption = rawOptions.find(o => o.id === studentAnswerId);
+
+    const distractorsText = rawOptions
+      .filter(o => !o.isCorrect)
+      .map(o => `• Option [${o.id}]: "${o.text}" is incorrect because it does not satisfy the governing principle.`)
+      .join('\n');
 
     return {
-      simpleExplanation: `Option [${(question.options as any[]).find(o => o.isCorrect)?.id || 'A'}] is the correct answer to this question.`,
-      detailedExplanation: cleanExpl,
-      examTip: 'Always carefully eliminate options that contradict fundamental principles before selecting your final answer.',
-      memoryTrick: 'Recall key terms and definitions from your past question practice.',
+      simpleExplanation: `Option [${correctOption?.id || 'A'}] ("${correctOption?.text}") is the correct answer to this question.`,
+      detailedExplanation: `Step 1: Analyze the question requirement:\n"${question.text}"\n\nStep 2: Correct Answer Breakdown:\nOption [${correctOption?.id || 'A'}] ("${correctOption?.text}") directly fulfills the required concept in ${question.topic || 'this subject'}.\n\nStep 3: Distractor Analysis:\n${distractorsText}`,
+      examTip: 'Eliminate options that conflict with fundamental definitions before making your final selection in WAEC/JAMB.',
+      memoryTrick: `Remember: Always associate "${correctOption?.text || 'this rule'}" with ${question.topic || 'the core syllabus topic'}.`,
       relatedTopic: question.topic || 'General',
-      suggestedReading: 'Review this topic in your recommended syllabus textbooks.',
+      suggestedReading: 'Review this topic in your recommended JAMB/WAEC syllabus textbook.',
     };
   }
 };
