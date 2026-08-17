@@ -45,7 +45,7 @@ export const initializePaystackPayment = async (userId: string, testId: string, 
       email,
       amount: amountInKobo,
       reference: paymentRef,
-      callback_url: `${FRONTEND_URL}/dashboard/tests/${testId}`,
+      callback_url: `${FRONTEND_URL}/dashboard`,
       metadata: {
         userId,
         testId,
