@@ -43,6 +43,67 @@ export const verifyPayment = async (req: Request, res: Response, next: NextFunct
   }
 };
 
+export const applyCoupon = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { code, testId } = req.body;
+    const userId = req.user!.id;
+
+    if (!code || typeof code !== 'string') {
+      throw new BadRequestError('Coupon code is required');
+    }
+
+    const cleanCode = code.trim().toLowerCase();
+
+    if (cleanCode !== 'solar') {
+      throw new BadRequestError('Invalid coupon code. Please check and try again.');
+    }
+
+    // Find a test to associate purchase with if not provided
+    let targetTestId = testId;
+    if (!targetTestId) {
+      const firstTest = await prisma.test.findFirst();
+      targetTestId = firstTest?.id;
+    }
+
+    if (targetTestId) {
+      await prisma.purchase.upsert({
+        where: {
+          userId_testId: {
+            userId,
+            testId: targetTestId,
+          },
+        },
+        update: {
+          paymentStatus: 'SUCCESS',
+          amount: 0,
+          paymentReference: `COUPON_SOLAR_${Date.now()}`,
+        },
+        create: {
+          userId,
+          testId: targetTestId,
+          amount: 0,
+          paymentStatus: 'SUCCESS',
+          paymentReference: `COUPON_SOLAR_${Date.now()}`,
+        },
+      });
+    }
+
+    // Update user access fee status
+    await prisma.gritUser.update({
+      where: { id: userId },
+      data: { hasPaidAccessFee: true },
+    });
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Coupon "solar" applied successfully! ₦500 platform fee waived.',
+      data: { hasPaidAccessFee: true },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getPaymentHistory = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = req.user!.id;

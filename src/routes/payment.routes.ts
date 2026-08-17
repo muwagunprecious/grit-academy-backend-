@@ -26,6 +26,7 @@ router.use(authenticate);
 
 router.post('/initialize', validate(initializeSchema), paymentController.initializePayment);
 router.post('/verify', validate(verifySchema), paymentController.verifyPayment);
+router.post('/apply-coupon', paymentController.applyCoupon);
 router.get('/history', paymentController.getPaymentHistory);
 
 // Admin-only route
