@@ -51,12 +51,14 @@ export const startAttempt = async (req: Request, res: Response, next: NextFuncti
       throw new BadRequestError('This test has already closed. Please contact your administrator.');
     }
 
-    // Allow free tests without a purchase record
-    const isFree = test.price === 0;
-    const isPurchased = isFree || test.purchases.length > 0;
-
-    if (!isPurchased && !isAdmin) {
-      throw new BadRequestError('You must purchase this test package to start the exam');
+    // Enforce 500 NGN access fee requirement for all student accounts
+    if (req.user?.role === 'STUDENT') {
+      const paidCount = await prisma.purchase.count({
+        where: { userId, paymentStatus: 'SUCCESS' },
+      });
+      if (paidCount === 0) {
+        throw new BadRequestError('A one-time ₦500 platform access fee is required before taking practice exams. Please complete payment on your dashboard.');
+      }
     }
 
     // Check maximum attempts limit
@@ -171,6 +173,16 @@ export const startCustomAttempt = async (req: Request, res: Response, next: Next
   try {
     const { subjectIds, duration = 30, questionsPerSubject = 10 } = req.body;
     const userId = req.user!.id;
+
+    // Enforce 500 NGN access fee requirement for all student accounts
+    if (req.user?.role === 'STUDENT') {
+      const paidCount = await prisma.purchase.count({
+        where: { userId, paymentStatus: 'SUCCESS' },
+      });
+      if (paidCount === 0) {
+        throw new BadRequestError('A one-time ₦500 platform access fee is required before taking practice exams. Please complete payment on your dashboard.');
+      }
+    }
 
     if (!Array.isArray(subjectIds) || subjectIds.length === 0) {
       throw new BadRequestError('At least one subject must be selected');
