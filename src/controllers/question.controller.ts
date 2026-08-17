@@ -4,8 +4,13 @@ import { BadRequestError, NotFoundError } from '../utils/errors.js';
 
 export const getQuestions = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { subjectId, difficulty, status, search, topic, page = 1, limit = 20 } = req.query;
-    const skip = (Number(page) - 1) * Number(limit);
+    const { subjectId, difficulty, status, search, topic, page = 1, limit = 100 } = req.query;
+
+    const isAll = limit === 'all' || Number(limit) >= 5000;
+    const pageNum = Math.max(1, Number(page));
+    const limitNum = isAll ? 10000 : Math.max(1, Number(limit));
+    const skip = isAll ? undefined : (pageNum - 1) * limitNum;
+    const take = isAll ? undefined : limitNum;
 
     const where: any = {};
     if (subjectId) where.subjectId = subjectId as string;
@@ -26,7 +31,7 @@ export const getQuestions = async (req: Request, res: Response, next: NextFuncti
         },
         orderBy: { createdAt: 'desc' },
         skip,
-        take: Number(limit),
+        take,
       }),
       prisma.question.count({ where }),
     ]);

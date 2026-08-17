@@ -14,7 +14,9 @@ export const generateQuestionsFromText = async (
   subjectId: string,
   pdfId?: string,
   numQuestions = 10,
-  difficulty = 'MEDIUM'
+  difficulty = 'MEDIUM',
+  isMultiSubject = false,
+  extractSubjectIds: string[] = []
 ) => {
   let lastError: any;
 
@@ -30,10 +32,73 @@ export const generateQuestionsFromText = async (
         throw new BadRequestError('Subject not found');
       }
 
+      // Fetch subjects for multi-subject classification mapping
+      let subjects: any[] = [];
+      if (isMultiSubject) {
+        if (extractSubjectIds && extractSubjectIds.length > 0) {
+          subjects = await prisma.subject.findMany({
+            where: { id: { in: extractSubjectIds } },
+          });
+        } else {
+          subjects = await prisma.subject.findMany();
+        }
+      }
+      const subjectNamesList = subjects.map(s => s.name);
+
       // Keep text snippet within Groq's 12,000 TPM limit (24,000 chars ~ 6,000 tokens)
       const textSnippet = text.slice(0, 24000);
 
-      const prompt = `You are a strict text parser and past-question extraction engine for Nigerian JAMB (UTME), WAEC, and NECO exams.
+      const prompt = isMultiSubject
+        ? `You are a strict text parser and past-question extraction engine for Nigerian JAMB (UTME), WAEC, and NECO exams.
+
+CRITICAL MANDATE:
+- You MUST extract EXACTLY ${numQuestions} distinct questions directly from the PDF text below.
+- Do NOT stop early or return fewer than ${numQuestions} questions.
+- You MUST ONLY extract actual questions that are directly present inside the provided PDF text.
+- Do NOT invent, generate, make up, or fabricate your own new questions.
+
+For each question, you MUST determine which subject it belongs to. The subject name MUST match one of the available subjects listed below. If a question does not match any of the listed subjects, map it to the closest fit or the most general subject from the list.
+
+AVAILABLE SUBJECTS:
+${subjectNamesList.map(name => `- ${name}`).join('\n')}
+
+PDF PAST QUESTION TEXT:
+"""
+${textSnippet}
+"""
+
+EXTRACTION RULES:
+1. Locate and extract EXACTLY ${numQuestions} distinct questions found inside the PDF text above.
+2. For each extracted question:
+   - Identify the correct subject name from the AVAILABLE SUBJECTS list and assign it to the "subjectName" field.
+   - Extract the 4 options (A, B, C, D) if present in the text.
+   - IF the question in the text does not have options listed, construct 4 realistic options (A, B, C, D) based on the question content.
+   - Mark exactly one correct option with "isCorrect": true.
+3. Include a concise step-by-step correction/explanation for the question in the "explanation" field.
+4. Return a JSON object with a "questions" key containing the array of EXACTLY ${numQuestions} items.
+
+JSON Structure:
+{
+  "text": "The exact question text extracted from the PDF...",
+  "subjectName": "The EXACT subject name from the AVAILABLE SUBJECTS list...",
+  "type": "SINGLE_CHOICE",
+  "options": [
+    {"id": "A", "text": "Option A text", "isCorrect": true},
+    {"id": "B", "text": "Option B text", "isCorrect": false},
+    {"id": "C", "text": "Option C text", "isCorrect": false},
+    {"id": "D", "text": "Option D text", "isCorrect": false}
+  ],
+  "explanation": "Step-by-step correction or solution...",
+  "topic": "Topic name",
+  "difficulty": "${difficulty}",
+  "bloomTaxonomy": "Understanding",
+  "tags": ["Past Question"],
+  "marks": 1,
+  "estimatedTime": 45
+}
+
+Return ONLY valid JSON. Do not include introductory or concluding text.`
+        : `You are a strict text parser and past-question extraction engine for Nigerian JAMB (UTME), WAEC, and NECO exams.
 
 CRITICAL MANDATE:
 - You MUST extract EXACTLY ${numQuestions} distinct questions directly from the PDF text below.
@@ -162,13 +227,24 @@ Return ONLY valid JSON. Do not include introductory or concluding text.`;
       const createdQuestions = [];
       for (const q of validQuestions) {
         try {
+          // Resolve subjectId from subjectName if multi-subject mode is active
+          let resolvedSubjectId = subjectId;
+          if (isMultiSubject && q.subjectName) {
+            const matchedSubject = subjects.find(
+              (s) => s.name.toLowerCase().trim() === q.subjectName.toLowerCase().trim()
+            );
+            if (matchedSubject) {
+              resolvedSubjectId = matchedSubject.id;
+            }
+          }
+
           const dbQ = await prisma.question.create({
             data: {
               text: q.text,
               type: q.type || 'SINGLE_CHOICE',
               options: q.options,
               explanation: q.explanation || 'No explanation provided.',
-              subjectId,
+              subjectId: resolvedSubjectId,
               topic: q.topic || 'General',
               difficulty: (q.difficulty || difficulty) as any,
               marks: q.marks || 1,
@@ -237,12 +313,23 @@ Provide a structured response in valid JSON with these keys:
   "suggestedReading": "General study recommendation..."
 }`;
 
-    const completion = await groq.chat.completions.create({
-      messages: [{ role: 'user', content: prompt }],
-      model: 'llama-3.3-70b-versatile',
-      temperature: 0.2,
-      response_format: { type: 'json_object' },
-    });
+    let completion;
+    try {
+      completion = await groq.chat.completions.create({
+        messages: [{ role: 'user', content: prompt }],
+        model: 'llama-3.3-70b-versatile',
+        temperature: 0.2,
+        response_format: { type: 'json_object' },
+      });
+    } catch (groqErr: any) {
+      console.warn('Groq 70b rate limit or error in explanation, falling back to llama-3.1-8b-instant...');
+      completion = await groq.chat.completions.create({
+        messages: [{ role: 'user', content: prompt }],
+        model: 'llama-3.1-8b-instant',
+        temperature: 0.2,
+        response_format: { type: 'json_object' },
+      });
+    }
 
     const responseText = completion.choices[0]?.message?.content;
     if (!responseText) {
@@ -252,12 +339,15 @@ Provide a structured response in valid JSON with these keys:
     return JSON.parse(responseText);
   } catch (error) {
     console.error('AI Correction Error:', error);
-    // Return fallback structured content
+    const cleanExpl = question.explanation && !question.explanation.toLowerCase().includes('past examination question')
+      ? question.explanation
+      : `The correct option is Option [${(question.options as any[]).find(o => o.isCorrect)?.id || 'A'}]. Review the topic in your syllabus for a deeper understanding.`;
+
     return {
-      simpleExplanation: 'Could not generate explanation due to an AI service error.',
-      detailedExplanation: question.explanation || 'Refer to textbook definitions.',
-      examTip: 'Always read all options carefully before selecting.',
-      memoryTrick: 'N/A',
+      simpleExplanation: `Option [${(question.options as any[]).find(o => o.isCorrect)?.id || 'A'}] is the correct answer to this question.`,
+      detailedExplanation: cleanExpl,
+      examTip: 'Always carefully eliminate options that contradict fundamental principles before selecting your final answer.',
+      memoryTrick: 'Recall key terms and definitions from your past question practice.',
       relatedTopic: question.topic || 'General',
       suggestedReading: 'Review this topic in your recommended syllabus textbooks.',
     };

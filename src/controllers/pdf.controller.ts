@@ -186,7 +186,7 @@ export const deletePdf = async (req: Request, res: Response, next: NextFunction)
 export const processPdf = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params as { id: string };
-    const { numQuestions = 10, difficulty = 'MEDIUM' } = req.body;
+    const { numQuestions = 10, difficulty = 'MEDIUM', isMultiSubject = false, extractSubjectIds = [] } = req.body;
 
     const pdf = await prisma.pdfDocument.findUnique({
       where: { id },
@@ -246,7 +246,9 @@ export const processPdf = async (req: Request, res: Response, next: NextFunction
         pdf.subjectId,
         pdf.id,
         numQuestions,
-        difficulty
+        difficulty,
+        isMultiSubject,
+        extractSubjectIds
       );
 
       // Update status to processed

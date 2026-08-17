@@ -133,6 +133,8 @@ model Test {
   coverImage      String?
   isPublished     Boolean            @default(false)
   publishDate     DateTime?
+  startTime       DateTime?
+  endTime         DateTime?
   instructions    String?
   negativeMarking Boolean            @default(false)
   negativeScore   Float              @default(0)
@@ -153,6 +155,7 @@ model Test {
 model Question {
   id            String         @id @default(cuid())
   text          String
+  passage       String?
   type          QuestionType   @default(SINGLE_CHOICE)
   options       Json
   explanation   String?
@@ -218,6 +221,7 @@ model TestAttempt {
   testId        String
   test          Test          @relation(fields: [testId], references: [id])
   answers       Json
+  questionIds   String[]      @default([])
   score         Float         @default(0)
   percentage    Float         @default(0)
   correctCount  Int           @default(0)

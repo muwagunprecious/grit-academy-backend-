@@ -2,6 +2,16 @@ import { Request, Response, NextFunction } from 'express';
 import prisma from '../lib/prisma.js';
 import { BadRequestError, NotFoundError } from '../utils/errors.js';
 
+// Fisher-Yates shuffle utility
+function shuffleArray<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 export const startAttempt = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { testId } = req.body;
@@ -17,33 +27,33 @@ export const startAttempt = async (req: Request, res: Response, next: NextFuncti
         purchases: {
           where: { userId, paymentStatus: 'SUCCESS' },
         },
-        questions: {
+        combination: {
           include: {
-            question: {
-              select: {
-                id: true,
-                text: true,
-                type: true,
-                options: true,
-                subjectId: true,
-                topic: true,
-                difficulty: true,
-                imageUrl: true,
-              },
-            },
+            subjects: { select: { id: true, name: true } },
           },
-          orderBy: { order: 'asc' },
         },
       },
-    });
+    }) as any;
 
     if (!test) {
       throw new NotFoundError('Test package not found');
     }
 
-    // Check if test is purchased (unless user is ADMIN)
-    const isPurchased = test.purchases.length > 0;
     const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
+
+    // Enforce scheduling window if set
+    const now = new Date();
+    if (!isAdmin && test.startTime && now < new Date(test.startTime)) {
+      const startFormatted = new Date(test.startTime).toLocaleString('en-NG', { timeZone: 'Africa/Lagos' });
+      throw new BadRequestError(`This test has not started yet. It opens at ${startFormatted}.`);
+    }
+    if (!isAdmin && test.endTime && now > new Date(test.endTime)) {
+      throw new BadRequestError('This test has already closed. Please contact your administrator.');
+    }
+
+    // Allow free tests without a purchase record
+    const isFree = test.price === 0;
+    const isPurchased = isFree || test.purchases.length > 0;
 
     if (!isPurchased && !isAdmin) {
       throw new BadRequestError('You must purchase this test package to start the exam');
@@ -59,35 +69,87 @@ export const startAttempt = async (req: Request, res: Response, next: NextFuncti
       }
     }
 
-    // Create new attempt
+    // Pick up to 30 randomized questions per subject from the combination's subjects
+    const subjects: { id: string; name: string }[] = test.combination?.subjects || [];
+    const QUESTIONS_PER_SUBJECT = 30;
+    let allSelectedQuestions: any[] = [];
+
+    for (const sub of subjects) {
+      const subjectQuestions = await prisma.question.findMany({
+        where: { subjectId: sub.id, status: 'APPROVED' },
+        select: {
+          id: true, text: true, passage: true, type: true, options: true,
+          subjectId: true, topic: true, difficulty: true, imageUrl: true,
+        },
+      }) as any[];
+
+      // Fallback to any status if no approved questions
+      const pool = subjectQuestions.length > 0
+        ? subjectQuestions
+        : await prisma.question.findMany({
+            where: { subjectId: sub.id },
+            select: {
+              id: true, text: true, passage: true, type: true, options: true,
+              subjectId: true, topic: true, difficulty: true, imageUrl: true,
+            },
+          }) as any[];
+
+      const selected = shuffleArray(pool).slice(0, QUESTIONS_PER_SUBJECT);
+      selected.forEach(q => allSelectedQuestions.push({ ...q, subjectName: sub.name }));
+    }
+
+    // If combination has no subjects, fallback to test's linked TestQuestions
+    if (allSelectedQuestions.length === 0) {
+      const testQuestions = await prisma.testQuestion.findMany({
+        where: { testId },
+        include: {
+          question: {
+            select: {
+              id: true, text: true, passage: true, type: true, options: true,
+              subjectId: true, topic: true, difficulty: true, imageUrl: true,
+            },
+          },
+        },
+        orderBy: { order: 'asc' },
+      }) as any[];
+      allSelectedQuestions = shuffleArray(testQuestions.map(tq => tq.question));
+    }
+
+    if (allSelectedQuestions.length === 0) {
+      throw new BadRequestError('No questions available for this test. Please ensure questions have been uploaded for the subjects in this combination.');
+    }
+
+    const selectedQuestionIds = allSelectedQuestions.map(q => q.id);
+
+    // Create new attempt with saved question IDs
     const attempt = await prisma.testAttempt.create({
       data: {
         userId,
         testId,
         answers: [],
-        totalTime: test.duration * 60, // store in seconds
+        questionIds: selectedQuestionIds,
+        totalTime: test.duration * 60,
         status: 'IN_PROGRESS',
         startedAt: new Date(),
       },
     });
 
-    // Format questions (strip correct answers for security)
-    const formattedQuestions = test.questions.map((q: any) => {
-      // Options are stored as Json: [ {id, text, isCorrect} ]
-      // Strip isCorrect field so students cannot inspect payload to find answers
-      const rawOptions = q.question.options as any[];
+    // Format questions safely (strip isCorrect)
+    const formattedQuestions = allSelectedQuestions.map((q: any, idx: number) => {
+      const rawOptions = (q.options as any[]) || [];
       const safeOptions = rawOptions.map(o => ({ id: o.id, text: o.text }));
-
       return {
-        id: q.question.id,
-        order: q.order,
-        text: q.question.text,
-        type: q.question.type,
+        id: q.id,
+        order: idx + 1,
+        text: q.text,
+        passage: q.passage || null,
+        type: q.type,
         options: safeOptions,
-        subjectId: q.question.subjectId,
-        topic: q.question.topic,
-        difficulty: q.question.difficulty,
-        imageUrl: q.question.imageUrl,
+        subjectId: q.subjectId,
+        subjectName: q.subjectName,
+        topic: q.topic,
+        difficulty: q.difficulty,
+        imageUrl: q.imageUrl,
       };
     });
 
@@ -95,7 +157,7 @@ export const startAttempt = async (req: Request, res: Response, next: NextFuncti
       status: 'success',
       data: {
         attemptId: attempt.id,
-        duration: test.duration, // minutes
+        duration: test.duration,
         questions: formattedQuestions,
       },
     });
@@ -103,6 +165,7 @@ export const startAttempt = async (req: Request, res: Response, next: NextFuncti
     next(error);
   }
 };
+
 
 export const startCustomAttempt = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -129,31 +192,21 @@ export const startCustomAttempt = async (req: Request, res: Response, next: Next
       throw new BadRequestError('Selected subjects were not found');
     }
 
-    // Fetch questions for each subject
+    // Fetch questions for each subject (max 30 per subject, randomized)
     let allQuestions: any[] = [];
     let orderIndex = 1;
+    const reqQCount = Math.min(30, Number(questionsPerSubject) || 30);
 
     for (const sub of subjects) {
-      const questions = await prisma.question.findMany({
+      const subjectPool = await prisma.question.findMany({
         where: {
           subjectId: sub.id,
-          status: 'APPROVED',
         },
-        take: Number(questionsPerSubject) || 10,
-        orderBy: { createdAt: 'desc' },
       });
 
-      // If no approved questions, fall back to any available questions
-      let finalSubjectQuestions = questions;
-      if (finalSubjectQuestions.length === 0) {
-        finalSubjectQuestions = await prisma.question.findMany({
-          where: { subjectId: sub.id },
-          take: Number(questionsPerSubject) || 10,
-          orderBy: { createdAt: 'desc' },
-        });
-      }
+      const selectedQuestions = shuffleArray(subjectPool).slice(0, reqQCount);
 
-      for (const q of finalSubjectQuestions) {
+      for (const q of selectedQuestions) {
         allQuestions.push({
           order: orderIndex++,
           question: q,
@@ -216,22 +269,22 @@ export const startCustomAttempt = async (req: Request, res: Response, next: Next
     });
 
     // Format safe questions (strip answer keys)
-    const formattedQuestions = allQuestions.map(item => {
-      const q = item.question;
-      const rawOptions = (q.options as any[]) || [];
-      const safeOptions = rawOptions.map(o => ({ id: o.id, text: o.text }));
+    const formattedQuestions = allQuestions.map((q: any) => {
+      const rawOptions = (q.question.options as any[]) || [];
+      const safeOptions = rawOptions.map((o: any) => ({ id: o.id, text: o.text }));
 
       return {
-        id: q.id,
-        order: item.order,
-        text: q.text,
-        type: q.type,
+        id: q.question.id,
+        order: q.order,
+        text: q.question.text,
+        passage: q.question.passage || null,
+        type: q.question.type,
         options: safeOptions,
-        subjectId: q.subjectId,
-        subjectName: item.subjectName,
-        topic: q.topic,
-        difficulty: q.difficulty,
-        imageUrl: q.imageUrl,
+        subjectId: q.question.subjectId,
+        subjectName: q.subjectName,
+        topic: q.question.topic,
+        difficulty: q.question.difficulty,
+        imageUrl: q.question.imageUrl,
       };
     });
 
@@ -472,11 +525,6 @@ export const getAttemptById = async (req: Request, res: Response, next: NextFunc
             passingScore: true,
             negativeMarking: true,
             negativeScore: true,
-            questions: {
-              include: {
-                question: true,
-              },
-            },
           },
         },
       },
@@ -490,21 +538,45 @@ export const getAttemptById = async (req: Request, res: Response, next: NextFunc
       throw new BadRequestError('Access denied to this test result');
     }
 
-    // Attach full details. For corrections: we need questions with explanations.
-    const questionsWithAnswers = attempt.test.questions.map((tq: any) => {
-      const q = tq.question;
-      const studentAns = (attempt.answers as any[]).find(a => a.questionId === q.id);
+    // Load questions using the saved questionIds (preserves the random order for this attempt)
+    const questionIdList: string[] = attempt.questionIds || [];
+    let questionRecords: any[] = [];
 
+    if (questionIdList.length > 0) {
+      const fetched = await prisma.question.findMany({
+        where: { id: { in: questionIdList } },
+        include: { subject: { select: { name: true } } },
+      }) as any[];
+
+      // Restore original order from questionIds
+      const qMap = new Map(fetched.map((q: any) => [q.id, q]));
+      questionRecords = questionIdList.map((qid: string) => qMap.get(qid)).filter(Boolean);
+    } else {
+      // Legacy fallback: load from TestQuestion relation
+      const testQuestions = await prisma.testQuestion.findMany({
+        where: { testId: attempt.testId },
+        include: { question: { include: { subject: { select: { name: true } } } } },
+        orderBy: { order: 'asc' },
+      }) as any[];
+      questionRecords = testQuestions.map((tq: any) => tq.question);
+    }
+
+    // Attach student answers to each question
+    const questionsWithAnswers = questionRecords.map((q: any, idx: number) => {
+      const studentAns = (attempt.answers as any[]).find((a: any) => a.questionId === q.id);
       return {
         id: q.id,
+        order: idx + 1,
         text: q.text,
+        passage: q.passage || null,
         type: q.type,
-        options: q.options, // Contains correct answer details
+        options: q.options,
         explanation: q.explanation,
         selectedOptionId: studentAns?.selectedOptionId || null,
         isCorrect: studentAns?.isCorrect || false,
         timeTaken: studentAns?.timeTaken || 0,
         subjectId: q.subjectId,
+        subjectName: q.subject?.name,
         topic: q.topic,
         difficulty: q.difficulty,
         imageUrl: q.imageUrl,

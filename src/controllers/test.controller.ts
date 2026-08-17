@@ -53,7 +53,7 @@ export const getTests = async (req: Request, res: Response, next: NextFunction) 
 
     const formattedTests = tests.map((test: any) => ({
       ...test,
-      isPurchased: purchasedTestIds.includes(test.id),
+      isPurchased: test.price === 0 || purchasedTestIds.includes(test.id),
     }));
 
     res.status(200).json({
@@ -170,7 +170,7 @@ export const getTestById = async (req: Request, res: Response, next: NextFunctio
 
 export const createTest = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { title, description, combinationId, price, duration, passingScore, difficulty, instructions, negativeMarking, negativeScore, maxAttempts, coverImage } = req.body;
+    const { title, description, combinationId, price, duration, passingScore, difficulty, instructions, negativeMarking, negativeScore, maxAttempts, coverImage, startTime, endTime } = req.body;
 
     const test = await prisma.test.create({
       data: {
@@ -186,6 +186,8 @@ export const createTest = async (req: Request, res: Response, next: NextFunction
         negativeScore: negativeScore ? Number(negativeScore) : 0,
         maxAttempts: maxAttempts ? Number(maxAttempts) : null,
         coverImage,
+        startTime: startTime ? new Date(startTime) : null,
+        endTime: endTime ? new Date(endTime) : null,
       },
     });
 
@@ -201,7 +203,7 @@ export const createTest = async (req: Request, res: Response, next: NextFunction
 export const updateTest = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params as { id: string };
-    const { title, description, combinationId, price, duration, passingScore, difficulty, instructions, negativeMarking, negativeScore, maxAttempts, coverImage, isPublished } = req.body;
+    const { title, description, combinationId, price, duration, passingScore, difficulty, instructions, negativeMarking, negativeScore, maxAttempts, coverImage, isPublished, startTime, endTime } = req.body;
 
     const test = await prisma.test.findUnique({
       where: { id },
@@ -228,6 +230,8 @@ export const updateTest = async (req: Request, res: Response, next: NextFunction
         coverImage,
         isPublished,
         publishDate: isPublished && !test.isPublished ? new Date() : undefined,
+        startTime: startTime !== undefined ? (startTime ? new Date(startTime) : null) : undefined,
+        endTime: endTime !== undefined ? (endTime ? new Date(endTime) : null) : undefined,
       },
     });
 
