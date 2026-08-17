@@ -295,26 +295,26 @@ export const setTestQuestions = async (req: Request, res: Response, next: NextFu
       throw new BadRequestError('questionIds must be an array of strings');
     }
 
-    // Use transaction to reset and create
-    await prisma.$transaction([
-      prisma.testQuestion.deleteMany({
-        where: { testId: id },
-      }),
-      prisma.testQuestion.createMany({
+    await prisma.testQuestion.deleteMany({
+      where: { testId: id },
+    });
+
+    if (questionIds.length > 0) {
+      await prisma.testQuestion.createMany({
         data: questionIds.map((qId: string, index: number) => ({
           testId: id,
           questionId: qId,
           order: index + 1,
         })),
-      }),
-      // Update total questions count in test
-      prisma.test.update({
-        where: { id },
-        data: {
-          totalQuestions: questionIds.length,
-        },
-      }),
-    ]);
+      });
+    }
+
+    await prisma.test.update({
+      where: { id },
+      data: {
+        totalQuestions: questionIds.length,
+      },
+    });
 
     res.status(200).json({
       status: 'success',

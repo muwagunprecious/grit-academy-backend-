@@ -21,7 +21,7 @@ export const getQuestions = async (req: Request, res: Response, next: NextFuncti
       where.text = { contains: search as string, mode: 'insensitive' };
     }
 
-    const [questions, total] = await prisma.$transaction([
+    const [questions, total] = await Promise.all([
       prisma.question.findMany({
         where,
         include: {
