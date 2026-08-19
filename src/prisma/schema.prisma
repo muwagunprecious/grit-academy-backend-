@@ -67,6 +67,7 @@ model GritUser {
   school        String?
   class         String?
   state         String?
+  referralCode  String?
   role          Role     @default(STUDENT)
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())

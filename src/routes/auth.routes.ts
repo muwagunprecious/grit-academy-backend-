@@ -15,6 +15,7 @@ const registerSchema = z.object({
     school: z.string().optional(),
     class: z.string().optional(),
     state: z.string().optional(),
+    referralCode: z.string().optional(),
   }),
 });
 

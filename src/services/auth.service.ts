@@ -33,10 +33,20 @@ export const generateTokens = (user: UserPayload) => {
 };
 
 export const registerUser = async (data: any) => {
-  const { email, password, firstName, lastName, phone, school, class: userClass, state } = data;
+  const { email, password, firstName, lastName, phone, school, class: userClass, state, referralCode } = data;
 
   if (!email || !password || !firstName || !lastName) {
     throw new BadRequestError('Email, password, first name and last name are required');
+  }
+
+  // Referral code validation: Only "hydrogen" is accepted if provided
+  let validReferralCode: string | null = null;
+  if (referralCode && typeof referralCode === 'string' && referralCode.trim() !== '') {
+    const cleanRef = referralCode.trim().toLowerCase();
+    if (cleanRef !== 'hydrogen') {
+      throw new BadRequestError('Invalid referral code. Only "hydrogen" is accepted.');
+    }
+    validReferralCode = 'hydrogen';
   }
 
   const existingUser = await prisma.gritUser.findUnique({
@@ -64,9 +74,23 @@ export const registerUser = async (data: any) => {
       school,
       class: userClass,
       state,
+      referralCode: validReferralCode,
       role,
     },
   });
+
+  // Track referral in AuditLog for detailed reporting
+  if (validReferralCode) {
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'USER_REFERRED',
+        entity: 'GritUser',
+        entityId: user.id,
+        details: { referralCode: 'hydrogen' },
+      },
+    });
+  }
 
   const tokens = generateTokens(user);
 
