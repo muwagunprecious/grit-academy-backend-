@@ -169,3 +169,63 @@ export const handleWebhook = async (req: Request, res: Response, next: NextFunct
     res.status(200).json({ status: 'failed', error: String(error) });
   }
 };
+
+export const syncPendingPayments = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await paymentService.syncPendingPurchases();
+    res.status(200).json({
+      status: 'success',
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const manualUnlock = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { userId, email } = req.body;
+
+    let user = null;
+    if (userId) {
+      user = await prisma.gritUser.findUnique({ where: { id: userId } });
+    } else if (email) {
+      user = await prisma.gritUser.findUnique({ where: { email } });
+    }
+
+    if (!user) {
+      throw new BadRequestError('User not found');
+    }
+
+    const firstTest = await prisma.test.findFirst();
+    const testId = firstTest?.id || 'cmrus90cf004nc1h0ezrn027p';
+
+    const purchase = await prisma.purchase.upsert({
+      where: {
+        userId_testId: {
+          userId: user.id,
+          testId,
+        },
+      },
+      update: {
+        paymentStatus: 'SUCCESS',
+      },
+      create: {
+        userId: user.id,
+        testId,
+        amount: 500,
+        paymentStatus: 'SUCCESS',
+        paymentRef: `ADMIN_UNLOCKED_${Date.now()}`,
+        paymentProvider: 'ADMIN_MANUAL',
+      },
+    });
+
+    res.status(200).json({
+      status: 'success',
+      message: `Account access for ${user.firstName} ${user.lastName} (${user.email}) has been manually unlocked by Admin!`,
+      data: { purchase },
+    });
+  } catch (error) {
+    next(error);
+  }
+};

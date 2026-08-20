@@ -213,3 +213,21 @@ export const handlePaystackWebhook = async (payload: any, signature?: string) =>
   }
   return { status: 'success' };
 };
+
+export const syncPendingPurchases = async () => {
+  const pendingPurchases = await prisma.purchase.findMany({
+    where: { paymentStatus: 'PENDING' },
+  });
+
+  let syncedCount = 0;
+  for (const purchase of pendingPurchases) {
+    try {
+      await verifyPaystackPayment(purchase.paymentRef);
+      syncedCount++;
+    } catch (e) {
+      // If verification fails or is incomplete, skip to next
+    }
+  }
+
+  return { syncedCount, totalPending: pendingPurchases.length };
+};

@@ -29,7 +29,9 @@ router.post('/verify', validate(verifySchema), paymentController.verifyPayment);
 router.post('/apply-coupon', paymentController.applyCoupon);
 router.get('/history', paymentController.getPaymentHistory);
 
-// Admin-only route
+// Admin / Authenticated routes
 router.get('/all', requireRole('ADMIN', 'SUPER_ADMIN'), paymentController.getAllPayments);
+router.post('/sync-pending', paymentController.syncPendingPayments);
+router.post('/manual-unlock', requireRole('ADMIN', 'SUPER_ADMIN'), paymentController.manualUnlock);
 
 export default router;
