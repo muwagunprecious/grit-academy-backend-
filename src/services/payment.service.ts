@@ -97,47 +97,101 @@ export const verifyPaystackPayment = async (reference: string) => {
     throw new BadRequestError(`Paystack verification failed: ${data.message}`);
   }
 
-  const { status, metadata, amount } = data.data;
+  const { status, metadata, customer, amount } = data.data;
 
   if (status === 'success') {
-    const userId = metadata.userId;
-    const testId = metadata.testId;
+    let targetUserId = metadata?.userId;
+    let targetTestId = metadata?.testId;
 
-    // Update purchase in DB
-    const purchase = await prisma.purchase.update({
-      where: {
-        paymentRef: reference,
-      },
-      data: {
-        paymentStatus: 'SUCCESS',
-      },
+    // 1. Try finding purchase by paymentRef first
+    let purchase = await prisma.purchase.findFirst({
+      where: { paymentRef: reference },
     });
 
-    // Increment purchase count on Test
-    await prisma.test.update({
-      where: { id: testId },
-      data: {
-        totalPurchases: { increment: 1 },
-      },
-    });
+    // 2. If purchase not found by reference, try finding user by metadata or customer email
+    if (!purchase && !targetUserId && customer?.email) {
+      const user = await prisma.gritUser.findUnique({
+        where: { email: customer.email },
+      });
+      if (user) {
+        targetUserId = user.id;
+      }
+    }
+
+    if (!targetTestId) {
+      const firstTest = await prisma.test.findFirst();
+      targetTestId = firstTest?.id;
+    }
+
+    if (purchase) {
+      purchase = await prisma.purchase.update({
+        where: { id: purchase.id },
+        data: { paymentStatus: 'SUCCESS' },
+      });
+      targetUserId = purchase.userId;
+      targetTestId = purchase.testId;
+    } else if (targetUserId && targetTestId) {
+      purchase = await prisma.purchase.upsert({
+        where: {
+          userId_testId: {
+            userId: targetUserId,
+            testId: targetTestId,
+          },
+        },
+        update: {
+          paymentStatus: 'SUCCESS',
+          paymentRef: reference,
+        },
+        create: {
+          userId: targetUserId,
+          testId: targetTestId,
+          amount: amount ? amount / 100 : 500,
+          paymentStatus: 'SUCCESS',
+          paymentRef: reference,
+          paymentProvider: 'paystack',
+        },
+      });
+    } else {
+      throw new NotFoundError('Purchase or associated user account not found');
+    }
+
+    // Safely increment purchase count on test if test exists
+    if (targetTestId) {
+      try {
+        await prisma.test.update({
+          where: { id: targetTestId },
+          data: { totalPurchases: { increment: 1 } },
+        });
+      } catch (err) {
+        console.warn('Could not increment test totalPurchases:', err);
+      }
+    }
 
     // Create notification for student
-    await prisma.notification.create({
-      data: {
-        userId,
-        title: 'Payment Successful',
-        message: 'Your test package has been unlocked permanent access.',
-        type: 'PAYMENT',
-        link: `/dashboard/tests/${testId}`,
-      },
-    });
+    if (targetUserId) {
+      try {
+        await prisma.notification.create({
+          data: {
+            userId: targetUserId,
+            title: 'Payment Successful',
+            message: 'Your platform access fee has been verified. Permanent access unlocked!',
+            type: 'PAYMENT',
+            link: targetTestId ? `/dashboard/tests/${targetTestId}` : '/dashboard',
+          },
+        });
+      } catch (err) {
+        console.warn('Could not create payment notification:', err);
+      }
+    }
 
     return purchase;
   } else {
-    await prisma.purchase.update({
-      where: { paymentRef: reference },
-      data: { paymentStatus: 'FAILED' },
-    });
+    try {
+      await prisma.purchase.updateMany({
+        where: { paymentRef: reference },
+        data: { paymentStatus: 'FAILED' },
+      });
+    } catch (e) {}
     throw new BadRequestError('Payment was not successful');
   }
 };
