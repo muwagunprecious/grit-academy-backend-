@@ -131,8 +131,16 @@ export const loginUser = async (data: any) => {
     throw new BadRequestError('Email and password are required');
   }
 
-  const user = await prisma.gritUser.findUnique({
-    where: { email },
+  const cleanEmail = String(email).trim().toLowerCase();
+  const cleanPassword = String(password).trim();
+
+  const user = await prisma.gritUser.findFirst({
+    where: {
+      email: {
+        equals: cleanEmail,
+        mode: 'insensitive',
+      },
+    },
   });
 
   if (!user) {
@@ -143,7 +151,11 @@ export const loginUser = async (data: any) => {
     throw new UnauthorizedError('Your account has been deactivated. Contact support.');
   }
 
-  const isMatch = await bcrypt.compare(password, user.password);
+  let isMatch = await bcrypt.compare(cleanPassword, user.password);
+  if (!isMatch && password !== cleanPassword) {
+    isMatch = await bcrypt.compare(password, user.password);
+  }
+
   if (!isMatch) {
     throw new UnauthorizedError('Invalid email or password');
   }
